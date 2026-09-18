@@ -64,7 +64,10 @@
 ### 方式一：浏览器直接运行（推荐给评审）
 
 ```bash
+# Gitee（主仓库）
 git clone https://gitee.com/zhang-san-zhangshan/15-minute-living-circle.git
+# 或 GitHub 镜像
+git clone https://github.com/LIHUA5645/15-.git
 cd 15-minute-living-circle
 python -m venv .venv
 .venv\Scripts\activate
