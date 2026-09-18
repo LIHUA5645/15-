@@ -64,7 +64,7 @@
 ### 方式一：浏览器直接运行（推荐给评审）
 
 ```bash
-git clone https://gitee.com/zhang-san-zhanshan/15-minute-living-circle.git
+git clone https://gitee.com/zhang-san-zhangshan/15-minute-living-circle.git
 cd 15-minute-living-circle
 python -m venv .venv
 .venv\Scripts\activate
