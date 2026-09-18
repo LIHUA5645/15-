@@ -1,0 +1,28 @@
+# 版权声明：肖沐樑  QQ：3387432690
+# 完成时间：2026，09，18
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: 代码格式检查
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: 单元测试
+        run: npm run test
+      - name: 构建 Web
+        run: npm run build

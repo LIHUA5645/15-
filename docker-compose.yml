@@ -1,11 +1,10 @@
-# 作者：肖沐樑　QQ：3387432690
+# 版权声明：肖沐樑  QQ：3387432690
 # 完成时间：2026，09，18
 services:
-  app:
+  web:
     build: .
+    image: shenghuoquan-tijian:latest
+    container_name: shenghuoquan-web
     ports:
-      - "8765:8765"
-    environment:
-      BAIDU_AK: ${BAIDU_AK}
-      WEB_AK: ${WEB_AK}
+      - "8080:80"
     restart: unless-stopped

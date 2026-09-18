@@ -1,52 +1,38 @@
 {
-  "name": "15fzshq",
+  "name": "shenghuoquan-tijian",
   "version": "1.0.0",
-  "author": "肖沐樑 QQ：3387432690",
-  "description": "15分钟生活圈智能体检助手（基于百度地图开放能力）",
-  "main": "main.js",
+  "description": "15 分钟便民生活圈·智能体检与规划助手（开源 AI 工具赛道）",
+  "author": "肖沐樑 QQ3387432690",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "start": "electron .",
-    "web": "python server.py",
-    "dist": "electron-builder --win nsis zip"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"src/**/*.{js,jsx}\"",
+    "format": "prettier --write \"src/**/*.{js,jsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,css}\"",
+    "electron:dev": "vite build && electron electron/main.cjs",
+    "dist:win": "vite build && electron-builder --win --config electron/builder.yml"
   },
-  "build": {
-    "appId": "com.xiaomuliang.shenghuoquan",
-    "productName": "15分钟生活圈体检助手",
-    "copyright": "Copyright © 2026 肖沐樑",
-    "asar": true,
-    "asarUnpack": ["**/*.exe", "**/*.node"],
-    "directories": { "output": "release" },
-    "files": [
-      "main.js", "preload.js", "package.json",
-      "server.exe", "logo.ico",
-      "web/**", "assets/**",
-      "!**/.env", "!**/.env.local", "!**/peizhi.json",
-      "README.md", "LICENSE"
-    ],
-    "win": {
-      "icon": "logo.ico",
-      "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "15分钟生活圈体检助手",
-      "uninstallDisplayName": "15分钟生活圈体检助手 ${version}",
-      "artifactName": "15分钟生活圈体检助手-安装版-${version}.exe"
-    },
-    "zip": {
-      "artifactName": "15分钟生活圈体检助手-绿色版-${version}.zip"
-    }
+  "dependencies": {
+    "echarts": "^5.5.0",
+    "lucide": "^1.47.0",
+    "morphicons": "^1.7.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "electron": "31.7.7",
-    "electron-builder": "26.15.3",
-    "png-to-ico": "3.0.2"
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.3",
+    "prettier": "^3.3.2",
+    "vite": "^5.3.1",
+    "vitest": "^2.0.0"
   }
 }

@@ -1,15 +1,13 @@
-# 作者：肖沐樑　QQ：3387432690
-# 完成时间：2026，09，18
-
-node_modules/
-__pycache__/
-.venv/
+node_modules
+dist
+dist_electron
+release
+*.log
+*.err
+.DS_Store
 .env
 .env.local
-data/
-release/
-build_pyi/
-*.spec
-*.db
-peizhi.json
-dist/
+coverage
+.vite
+.idea
+.vscode

@@ -1,143 +1,96 @@
-# 15 分钟生活圈智能体检助手
+# 15 分钟便民生活圈 · 智能体检与规划助手
 
-> 基于百度地图开放能力，输入一个社区中心点，自动计算真实步行 15 分钟可达范围（等时圈），
-> 盘点圈内菜市场 / 药店 / 小学 / 社区医院等民生设施覆盖情况，标注「服务盲区」，并输出可视化体检报告。
+> 开源 AI 工具赛道参赛作品 · 作者：肖沐樑（QQ：3387432690） · 许可证：MIT
 
-作者：肖沐樑　QQ：3387432690
-完成时间：2026，09，18
+基于百度地图开放能力，输入社区中心点坐标，系统自动计算**真实步行路网**下的 15 分钟等时圈，
+统计圈内民生设施覆盖，识别"服务盲区"，输出可导出、可复现的**社区生活圈体检报告**。
 
 ---
 
-## 一、项目简介
+## 一、特性
 
-「15 分钟生活圈」是城市社区治理的核心指标。本项目把「配套够不够」从主观判断变成可量化、
-可可视化、可复盘的硬指标：以任意社区中心点为起点，沿真实步行路网测算可达范围，
-统计圈内各类民生设施，找出设施匮乏的灰色区域，最后给出一份带评分的体检报告。
+- **真实路网等时圈**：扇形方位采样 → 割线法边界收敛 → 各向异性 IDW 插值 → Marching Squares 等值线 → 采样路网吸附，边界贴合真实道路而非"画圆"。
+- **多源 POI 清洗**：同义词检索、编辑距离去重、品牌去重、黑名单噪声过滤、可信度打分、分维归档。
+- **服务盲区识别**：居住性过滤 + 粗筛 + 批量距离矩阵精算 + DBSCAN 聚类，输出补建建议清单。
+- **六维评分报告**：医疗/教育/购物/养老/交通/休闲，雷达图 + 柱状图 + 仪表盘，一键导出 JSON。
+- **多端复用**：分析引擎 `src/core` 零 DOM 依赖，Web / Electron / 小程序 / 安卓共用。
+- **配额与容错**：令牌桶限流 + 并发池 + 三级缓存 + 退避重试 + 离线降级，全程可跑通演示。
 
-应用同时提供 **Web 版** 与 **桌面版（Electron 安装包 / 绿色版）**，两种形态共用同一套后端代码。
+## 二、目录结构
 
-## 二、功能特性
-
-| 功能 | 说明 |
-| --- | --- |
-| 15 分钟等时圈 | 扇形采样 + 批量距离矩阵测时 + 空间插值，推导近似连通可达区域，而非直线圆 |
-| 设施覆盖盘点 | 菜市场 / 药店 / 小学 / 社区医院 / 公园 / 银行等，统计圈内数量与最近可达时长 |
-| 服务盲区识别 | 在等时圈内网格化判定「1km 内是否缺失某类设施」，高亮灰色盲区并输出清单 |
-| 可视化体检报告 | 等时圈热力图 + 设施柱状图 + 各维度评分星级 / 进度条 + 盲区清单 |
-| 自定义中心点 | 地图点选 / 地址搜索 / 直接输入经纬度 |
-| 容错降级 | 未配置 AK 时自动用直线距离估算，无密钥也能完整演示 |
-
-## 三、技术栈
-
-- **后端**：Python 3.13 + FastAPI + uvicorn + httpx + pydantic + SQLite
-- **前端**：原生 HTML / CSS / JavaScript + 百度地图 JS API + ECharts
-- **桌面壳**：Electron + electron-builder
-- **打包**：PyInstaller（后端 → `server.exe`）、electron-builder（nsis 安装包 + zip 绿色版）
-- **开放能力**：百度地图地理编码 / POI 周边检索 / 批量距离矩阵（步行）
-
-## 四、目录结构
-
-```text
-15-minute-living-circle/
-├─ server.py              后端入口：FastAPI + 静态托管 + 体检接口
-├─ app/
-│  ├─ config.py           AK 读取（用户配置 > 环境变量 > .env）+ 日志脱敏
-│  ├─ cache.py            SQLite 缓存，相同条件命中即秒出
-│  ├─ map_api.py          百度地图封装：地理编码 / POI / 批量距离矩阵
-│  ├─ isochrone.py        等时圈：扇形采样 + 批量测时 + 空间插值
-│  ├─ blindspot.py        服务盲区识别
-│  └─ score.py            覆盖度评分（星级）
-├─ web/                   纯静态前端（由后端托管）
-│  ├─ index.html  css/  js/  vendor/
-├─ main.js  preload.js    Electron 壳
-├─ scripts/
-│  ├─ build.bat           一键打包脚本
-│  └─ make-icon.ps1       图标生成
-├─ Dockerfile  docker-compose.yml       容器化部署
-├─ .gitee/workflows/build.yml           CI 门禁
-├─ .env.example           密钥样例（复制为 .env 使用）
-└─ requirements.txt / package.json
+```
+src/
+  core/        分析引擎（纯 JS，零 DOM）
+    geo/       几何工具
+    isochrone/ 等时圈五阶段算法
+    poi/       POI 检索与清洗
+    blindspot/ 盲区识别
+    scoring/   评分模型
+    scheduler/ 限流/并发/缓存/降级
+    pipeline.js 流水线编排
+  adapters/    数据源适配器（bmapWeb / bmapServer / mock）
+  ui/          React 界面 + Canvas 可视化 + ECharts 报告
+electron/    桌面端壳（主进程 API 代理 + 磁盘缓存 + 打包）
+docs/         设计实录 / 测试报告
+tests/        vitest 单元测试
 ```
 
-## 五、快速开始
+## 三、环境配置（AK 脱敏）
 
-### 方式一：浏览器直接运行（推荐给评审）
+复制 `.env.example` 为 `.env`，按需填写：
 
-```bash
-# Gitee（主仓库）
-git clone https://gitee.com/zhang-san-zhangshan/15-minute-living-circle.git
-# 或 GitHub 镜像
-git clone https://github.com/LIHUA5645/15-.git
-cd 15-minute-living-circle
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-python server.py
+```
+VITE_BMAP_AK=浏览器端AK       # 地图渲染/检索/步行路线，百度控制台"应用类型=浏览器端"
+BAIDU_SERVER_AK=服务端AK      # 可选，批量距离矩阵，桌面端 Electron 主进程使用
 ```
 
-然后打开浏览器访问 <http://127.0.0.1:8765> 。
+> AK 不硬编码进代码；未配置时自动使用**离线样例**模式，无需 AK 即可完整演示。
 
-### 方式二：Docker 一键启动
-
-```bash
-docker compose up -d
-```
-
-同样访问 <http://127.0.0.1:8765> 。（需在 `.env` 里配置 AK，见第六节）
-
-### 方式三：桌面安装包 / 绿色版
+## 四、快速运行
 
 ```bash
+# 1. 安装依赖
 npm install
-scripts\build.bat
+
+# 2. 开发（Web）
+npm run dev            # 访问 http://localhost:5173
+
+# 3. 构建 Web 产物
+npm run build          # 产物在 dist/
+
+# 4. 单元测试
+npm run test
+
+# 5. Docker 一键演示
+docker compose up -d --build   # 访问 http://localhost:8080
 ```
 
-产物在 `release\` 目录：安装版 `*.exe` 与绿色版 `*.zip`。
-桌面版**不需要**目标机器安装 Python / Node，但需要联网（要访问百度地图开放平台）。
+## 五、桌面端打包（exe 安装包）
 
-> 桌面版用户配置与缓存位于 `%APPDATA%\shenghuoquan\`，卸载不删除，重装直接可用。
+```bash
+# 构建 Web 产物并由 electron-builder 打包 NSIS 安装包
+npm run dist:win       # 产物在 release/生活圈体检助手-Setup-*.exe
+```
 
-## 六、API Key 配置与脱敏
+桌面端主进程使用**服务端 AK** 通过 Web 服务 API 启用批量距离矩阵，并落盘缓存以降低配额。
 
-本项目需要百度地图两类 AK：
+## 六、API 调用策略要点
 
-| 变量 | 类型 | 用途 |
-| --- | --- | --- |
-| `BAIDU_AK` | 服务端 AK | 地理编码 / POI 检索 / 批量距离矩阵 |
-| `WEB_AK` | 浏览器端 AK | 前端百度地图 JS API 底图渲染 |
+| 能力 | 接口 | 用途 |
+|---|---|---|
+| 地图渲染 | BMap GL JS SDK | 底图/覆盖物/热力 |
+| 地理/逆地理编码 | Geocoder / geocoding(v3) | 地址↔坐标、居住性判断 |
+| POI 检索 | LocalSearch / place/v2/search | 民生设施采集 |
+| 步行路径规划 | WalkingRoute / direction/v2/walking | 等时圈边界 |
+| 批量距离矩阵 | routematrix/v1/walking | 盲区批量判定（降耗时核心） |
 
-配置方式（按优先级）：
+**等时圈算法**：`r0 = v·T/k`（v=80m/min，k=1.25）≈ 960m；每个方位用割线法求"耗时=15min"边界半径；
+迭代过程采样点构造各向异性 IDW 插值场（`w=1/(d²·(1+α·Δθ))`），Marching Squares 提取等值线并吸附到采样路网。
 
-1. 打包版：界面里填写，存入 `%APPDATA%\shenghuoquan\peizhi.json`；
-2. 开发版：环境变量；
-3. 开发版：项目根目录 `.env` 文件（从 `.env.example` 复制）。
+## 七、CI/CD
 
-**脱敏约定（对应评审「开源工程规范」）**：
+`.github/workflows/ci.yml`：lint + Prettier 格式检查 + vitest 测试 + 构建，推送即触发。
 
-- `.env` / `peizhi.json` 已在 `.gitignore` 中排除，**绝不入库**；
-- `electron-builder` 打包时显式排除 `**/.env`；
-- 日志中 AK 经 `yinshen()` 处理，仅保留头尾各 3 位。
+## 八、许可证
 
-## 七、一键构建
-
-`scripts\build.bat` 把三步串起来：
-
-1. 生成图标 `logo.ico`（需 `assets/logo.png`）；
-2. `PyInstaller` 编译后端为 `server.exe`（含 `uvicorn` hidden-import 与 `web` 资源）；
-3. `electron-builder` 输出安装包与绿色版到 `release\`。
-
-## 八、CI/CD
-
-`.gitee/workflows/build.yml`，每次 push / PR 自动执行：
-
-- `flake8` 代码规范门禁；
-- `pytest` 算法单测；
-- 通过后在 Windows 环境自动 `electron-builder` 打包并上传产物。
-
-## 九、许可证
-
-本项目基于 [MIT License](LICENSE) 开源。
-
-## 十、作者
-
-肖沐樑　QQ：3387432690
+MIT License，详见 `LICENSE`。
