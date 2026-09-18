@@ -99,6 +99,11 @@ body {
   padding: 8px 14px; font-size: 13px; color: var(--muted); box-shadow: var(--shadow);
 }
 .map-note { color: var(--warn); }
+.map-loading { display: inline-flex; align-items: center; gap: 10px; }
+.link-btn {
+  border: none; background: transparent; color: var(--brand); font-size: 13px; font-weight: 700;
+  cursor: pointer; text-decoration: underline; padding: 0;
+}
 .offline {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 25;
   background: #fff4e5; color: #b35c00; border: 1px solid #ffd8a8; border-radius: 10px;

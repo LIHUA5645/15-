@@ -8,7 +8,7 @@ function dengMapJiuXu(resolve, reject) {
   const t0 = Date.now();
   (function xun() {
     if (typeof window !== 'undefined' && window.BMapGL && window.BMapGL.Map) return resolve(window.BMapGL);
-    if (Date.now() - t0 > 10000) return reject(new Error('BMapGL.Map 未就绪'));
+    if (Date.now() - t0 > 6000) return reject(new Error('BMapGL.Map 未就绪'));
     setTimeout(xun, 100);
   })();
 }
@@ -27,7 +27,7 @@ export function loadBmap() {
     document.head.appendChild(s);
     setTimeout(() => {
       if (!window.BMapGL || !window.BMapGL.Map) reject(new Error('BMap 加载超时'));
-    }, 12000);
+    }, 7000);
   });
   return p;
 }

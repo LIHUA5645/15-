@@ -10,6 +10,7 @@ import { GuanLiYuan } from './admin.jsx';
 import { loadPeiZhi, saveReport } from './peiZhi.js';
 import { loadBmap } from './loadBmap.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
+import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 import { MorphIcon } from 'morphicons/react';
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin } from 'lucide';
 
@@ -64,11 +65,12 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [souSuoWenBen, setSouSuoWenBen] = useState('');
   const [zhouBian, setZhouBian] = useState([]); // 定位周边推荐点
-  // 底图引擎：baidu=百度地图（需有效 AK 且 Referer 白名单已配置）；tile=开源瓦片（不依赖 AK）
-  // 默认用开源瓦片，避免 AK 白名单未配时被百度反滥用弹窗拦住；AK 修好后可在顶栏切回百度
+  // 底图引擎：baidu=百度地图（需 AK 状态正常，否则会被反滥用拦截导致空白）
+  // tile=高德/OSM 瓦片（无需 AK，国内加载快，作为默认可用的底图）
   const [ditu, setDitu] = useState('tile');
   const [xianshi, setXianshi] = useState(() => Object.fromEntries(Object.keys(COLOR).map((k) => [k, true])));
   const runningRef = useRef(false);
+  const jiaoHuRef = useRef(false); // 用户是否已在地图上操作过（手动点选中心）
   // 面板整块显隐（true=显示），由顶栏开关控制
   const [kai, setKai] = useState({ zuo: true, you: true });
 
@@ -139,41 +141,49 @@ export function App() {
     }
   }
 
+  // OSM 地理编码（Nominatim）：不依赖百度 AK 的地址搜索兜底
+  async function souSuoOsm(w) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(w)}&format=json&limit=1`;
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    const j = await r.json();
+    if (j && j[0]) return { lng: Number(j[0].lon), lat: Number(j[0].lat) };
+    return null;
+  }
+
+  function yingYong(c) {
+    setCenter(c);
+    setCurName(souSuoWenBen.trim());
+    run(c);
+  }
+
   async function souSuo() {
     const w = souSuoWenBen.trim();
     if (!w) return;
-    try {
-      const B = await loadBmap();
-      const gc = new B.Geocoder();
-      gc.getPoint(w, (p) => {
-        if (p) {
-          const c = { lng: p.lng, lat: p.lat };
-          setCenter(c);
-          setCurName(w);
-          run(c);
-        } else {
-          alert('未找到该地址，请换关键词试试');
-        }
-      });
-    } catch {
-      alert('地图服务未就绪，无法搜索');
-    }
-  }
-
-  // 浏览器定位返回 WGS-84，百度地图使用 BD-09，必须纠偏否则会偏移数百米
-  async function zhuanBaiDu(c) {
-    try {
-      const B = await loadBmap();
-      if (!B || !B.Convertor) return c;
-      return await new Promise((resolve) => {
-        new B.Convertor().translate([new B.Point(c.lng, c.lat)], 1, 5, (res) => {
-          if (res && res.status === 0 && res.points && res.points[0]) {
-            resolve({ lng: res.points[0].lng, lat: res.points[0].lat });
-          } else resolve(c);
+    // 仅当底图是百度时才走百度地理编码；其余情况直接用 OSM，避免无谓触发百度 SDK
+    if (ditu === 'baidu') {
+      try {
+        const B = await loadBmap();
+        const gc = new B.Geocoder();
+        const ok = await new Promise((resolve) => {
+          gc.getPoint(w, (p) => {
+            if (p) {
+              // 百度返回 BD-09，转成内部统一的 WGS-84
+              yingYong(bd09ZhuanWgs84(p.lng, p.lat));
+              resolve(true);
+            } else resolve(false);
+          });
         });
-      });
+        if (ok) return;
+      } catch {
+        /* 百度不可用 → 走 OSM */
+      }
+    }
+    try {
+      const q = await souSuoOsm(w);
+      if (q) yingYong(q);
+      else alert('未找到该地址，请换关键词试试');
     } catch {
-      return c;
+      alert('地址服务暂不可用，请稍后重试或直接点地图选点');
     }
   }
 
@@ -213,8 +223,11 @@ export function App() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const c = await zhuanBaiDu({ lng: pos.coords.longitude, lat: pos.coords.latitude });
+      (pos) => {
+        // 自动定位是异步的，若用户已先在地图上选好了位置，就不要再用定位结果覆盖他
+        if (ziDong && jiaoHuRef.current) return;
+        // 应用内部统一使用 WGS-84（OSM 与 GPS 原生坐标系），渲染时按底图再转换
+        const c = { lng: pos.coords.longitude, lat: pos.coords.latitude };
         setCenter(c);
         setCurName('当前位置');
         tuijianZhouBian(c); // 定位成功后推荐周边可体检点
@@ -309,8 +322,8 @@ export function App() {
           </button>
         </div>
         <select className="ditu-select" value={ditu} onChange={(e) => setDitu(e.target.value)} title="底图引擎">
+          <option value="tile">底图：高德/OSM 瓦片</option>
           <option value="baidu">底图：百度地图</option>
-          <option value="tile">底图：开源瓦片</option>
         </select>
         <span className={`src-chip ${mode}`}>{MO_DES[mode]}</span>
         <button className="admin-btn" onClick={() => setAdminOpen(true)}>管理员</button>
@@ -318,7 +331,17 @@ export function App() {
     </header>
 
       <div className="mapwrap">
-        <MapCanvas report={report} center={center} onPick={setCenter} xianshi={xianshi} ditu={ditu} />
+        <MapCanvas
+          report={report}
+          center={center}
+          onPick={(p) => {
+            jiaoHuRef.current = true;
+            setCenter(p);
+          }}
+          xianshi={xianshi}
+          ditu={ditu}
+          onDitu={setDitu}
+        />
         {offline && <div className="offline">地图服务异常，已降级真实路网兜底模式，请检查 AK / 网络</div>}
       </div>
 

@@ -6,10 +6,10 @@ import React, { useCallback, useEffect, useRef } from 'react';
 
 const TILE = 256;
 
-// 瓦片源（按可用性排序，前一个失败自动切换下一个）
+// 瓦片源（按国内可用性排序：高德最快且有中文注记，失败自动切 OSM）
 const WA_YUAN = [
-  (z, x, y) => `https://a.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png`,
   (z, x, y) => `https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=${x}&y=${y}&z=${z}`,
+  (z, x, y) => `https://a.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png`,
 ];
 
 const COLOR = {
@@ -47,6 +47,9 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
   const tilesRef = useRef(new Map());
   const dragRef = useRef(null);
   const rafRef = useRef(0);
+  const shiBaiRef = useRef(new Set()); // 已失败的瓦片（按源区分）
+  const jiShuRef = useRef(0); // 当前源失败次数
+  const ziFaRef = useRef(null); // 由地图自身点击产生的中心点（避免自己点完又强行居中，导致视图跳动）
 
   const draw = useCallback(() => {
     const cvs = cvsRef.current;
@@ -86,19 +89,26 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
         if (img && img.complete && img.naturalWidth) {
           ctx.drawImage(img, tx * TILE - ox, ty * TILE - oy, TILE, TILE);
         } else if (!img) {
+          const biao = `${st.yuan}|${key}`;
+          if (shiBaiRef.current.has(biao)) continue; // 已失败过，避免无限重试
           img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.referrerPolicy = 'no-referrer';
+          // 注意：不能设置 crossOrigin。瓦片服务器不返回 CORS 头，
+          // 设了会导致图片加载全部失败；画布只做 drawImage 不需要读取像素。
           const k = st.yuan;
           img.src = WA_YUAN[k](z, wx, ty);
           img.onload = () => jianGeChongHua();
           img.onerror = () => {
             tilesRef.current.delete(key);
-            if (k + 1 < WA_YUAN.length) {
-              st.yuan = k + 1;
+            shiBaiRef.current.add(biao);
+            jiShuRef.current += 1;
+            // 同一源累计失败 6 次 → 切换下一个瓦片源并重试
+            if (jiShuRef.current >= 6 && st.yuan + 1 < WA_YUAN.length) {
+              st.yuan += 1;
+              jiShuRef.current = 0;
               tilesRef.current.clear();
-              jianGeChongHua();
+              shiBaiRef.current.clear();
             }
+            jianGeChongHua();
           };
           tilesRef.current.set(key, img);
         }
@@ -196,12 +206,18 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
     });
   }
 
-  // 中心点变化 → 视图居中（初次进入即定位到目标点）
+  // 中心点变化 → 视图居中
+  // 但若这次中心点就是「用户刚点地图产生的」，则不再居中，否则每点一次画面整体平移，观感就是乱跳
   useEffect(() => {
-    const st = stRef.current;
-    const w = lngLatToWorld(center.lng, center.lat, st.z);
-    st.cx = w.x;
-    st.cy = w.y;
+    const z = ziFaRef.current;
+    const ziFa =
+      z && Math.abs(z.lng - center.lng) < 1e-9 && Math.abs(z.lat - center.lat) < 1e-9;
+    if (!ziFa) {
+      const st = stRef.current;
+      const w = lngLatToWorld(center.lng, center.lat, st.z);
+      st.cx = w.x;
+      st.cy = w.y;
+    }
     jianGeChongHua();
   }, [center]);
 
@@ -239,6 +255,7 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
     const ox = st.cx - wrapRef.current.clientWidth / 2;
     const oy = st.cy - wrapRef.current.clientHeight / 2;
     const p = worldToLngLat(ox + (e.clientX - rect.left), oy + (e.clientY - rect.top), st.z);
+    ziFaRef.current = p; // 标记：该中心点来自地图点击
     onPick(p);
   }
   function gunLun(e) {
