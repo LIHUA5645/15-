@@ -1,0 +1,26 @@
+# 作者：肖沐樑　QQ：3387432690
+# 完成时间：2026，09，18
+name: build
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - run: pip install -r requirements.txt flake8
+      - run: flake8 app server.py --max-line-length=120
+      - run: python -m pytest tests -q
+  pack:
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', registry-url: 'https://registry.npmmirror.com' }
+      - run: npm install
+      - run: npx electron-builder --win nsis zip
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+      - uses: actions/upload-artifact@v4
+        with: { name: release, path: release/*.exe }

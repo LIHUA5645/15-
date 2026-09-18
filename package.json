@@ -1,0 +1,52 @@
+{
+  "name": "15fzshq",
+  "version": "1.0.0",
+  "author": "肖沐樑 QQ：3387432690",
+  "description": "15分钟生活圈智能体检助手（基于百度地图开放能力）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "python server.py",
+    "dist": "electron-builder --win nsis zip"
+  },
+  "build": {
+    "appId": "com.xiaomuliang.shenghuoquan",
+    "productName": "15分钟生活圈体检助手",
+    "copyright": "Copyright © 2026 肖沐樑",
+    "asar": true,
+    "asarUnpack": ["**/*.exe", "**/*.node"],
+    "directories": { "output": "release" },
+    "files": [
+      "main.js", "preload.js", "package.json",
+      "server.exe", "logo.ico",
+      "web/**", "assets/**",
+      "!**/.env", "!**/.env.local", "!**/peizhi.json",
+      "README.md", "LICENSE"
+    ],
+    "win": {
+      "icon": "logo.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "15分钟生活圈体检助手",
+      "uninstallDisplayName": "15分钟生活圈体检助手 ${version}",
+      "artifactName": "15分钟生活圈体检助手-安装版-${version}.exe"
+    },
+    "zip": {
+      "artifactName": "15分钟生活圈体检助手-绿色版-${version}.zip"
+    }
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "26.15.3",
+    "png-to-ico": "3.0.2"
+  }
+}

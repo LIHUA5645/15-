@@ -1,0 +1,11 @@
+# 作者：肖沐樑　QQ：3387432690
+# 完成时间：2026，09，18
+services:
+  app:
+    build: .
+    ports:
+      - "8765:8765"
+    environment:
+      BAIDU_AK: ${BAIDU_AK}
+      WEB_AK: ${WEB_AK}
+    restart: unless-stopped
