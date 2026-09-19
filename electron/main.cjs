@@ -14,9 +14,20 @@ try {
 } catch {
   cacheMap = {};
 }
+let dirty = false;
+let writeTimer = null;
+function flushCache() {
+  if (!dirty) return;
+  dirty = false;
+  fs.writeFile(cacheFile, JSON.stringify(cacheMap), (err) => {
+    if (err) console.error('缓存写入失败', err);
+  });
+}
 function cacheSet(k, v) {
   cacheMap[k] = { t: Date.now(), v };
-  fs.writeFileSync(cacheFile, JSON.stringify(cacheMap));
+  dirty = true;
+  if (writeTimer) clearTimeout(writeTimer);
+  writeTimer = setTimeout(flushCache, 500); // 500ms 内合并多次写入
 }
 function cacheGet(k) {
   const o = cacheMap[k];
@@ -24,6 +35,8 @@ function cacheGet(k) {
   if (Date.now() - o.t > 7 * 864e5) return null;
   return o.v;
 }
+// 应用退出前强制落盘
+app.on('before-quit', flushCache);
 const store = { get: cacheGet, set: cacheSet };
 
 const serverAk = process.env.BAIDU_SERVER_AK || '';

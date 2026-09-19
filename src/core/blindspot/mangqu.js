@@ -1,7 +1,7 @@
 // 版权声明：肖沐樑  QQ：3387432690
 // 完成时间：2026，09，18
 // 服务盲区识别：候选网格 → 居住性过滤 → 粗筛 → 精算 → DBSCAN 聚类 → 补建建议
-import { liangDianJuLi } from '../geo/jichu.js';
+import { liangDianJuLi, chuangJianWangGe } from '../geo/jichu.js';
 
 const R_WAI = 2000; // 外扩半径（米）
 const CUCAI_BU = { fast: 300, standard: 200, fine: 150 };
@@ -18,18 +18,15 @@ function zuiJinJuLi(dian, poiList) {
   return min;
 }
 
-// DBSCAN 聚类
+// DBSCAN 聚类：用栅格索引替代 O(n²) 全量扫描
 function dbscan(dianLie, eps, minPts) {
   const n = dianLie.length;
+  if (n === 0) return [];
   const visited = new Array(n).fill(false);
   const cluster = new Array(n).fill(-1);
   let cid = 0;
-  const quYu = (i) => {
-    const out = [];
-    for (let j = 0; j < n; j++)
-      if (liangDianJuLi(dianLie[i], dianLie[j]) <= eps) out.push(j);
-    return out;
-  };
+  const wangGe = chuangJianWangGe(dianLie, eps);
+  const quYu = (i) => wangGe.zaiBanJingNei(dianLie[i], eps).map((it) => it.i);
   for (let i = 0; i < n; i++) {
     if (visited[i]) continue;
     visited[i] = true;

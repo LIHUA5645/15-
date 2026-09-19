@@ -10,15 +10,16 @@ import { LingPaiTong, BingFaChi, HuanCun } from './scheduler/xianliu.js';
 export async function yunXingTijian(provider, canShu, opt = {}) {
   const t0 = Date.now();
   const warnings = [];
-  // 构造调度器：并发池 + 令牌桶限流
-  // 默认取保守值：浏览器端 AK 的「地点检索 / 路线规划」并发上限较低，过高会触发平台限流告警
+  // 构造调度器：并发池 + 令牌桶限流，并统计实际经过限流器的请求数
   const qps = opt.qps || 2;
   const bingfa = opt.bingfa || 3;
   const tong = new LingPaiTong(qps);
   const xl = new BingFaChi(bingfa);
+  let qingQiuShu = 0;
   const xianliu = {
     run: (fn) => xl.run(async () => {
       await tong.huoQu();
+      qingQiuShu++;
       return fn();
     }),
   };
@@ -30,7 +31,9 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     xianliu,
     huanCun: hc,
   });
-  const qingQiuShu0 = 0;
+  if (poiSet.cunYi && poiSet.cunYi.length) {
+    warnings.push(`POI 清洗阶段有 ${poiSet.cunYi.length} 条低可信度数据未参评`);
+  }
 
   // 2. 等时圈
   const dengShiQuan = await shengChengDengshiquan(provider, canShu, {
@@ -38,6 +41,13 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     xianliu,
     jinDu: opt.jinDu,
   });
+  if (dengShiQuan.geshe && dengShiQuan.geshe.length) {
+    warnings.push(`检测到 ${dengShiQuan.geshe.length} 个方位存在明显阻隔/割裂`);
+  }
+  const jiangZhiYangBen = (dengShiQuan.yangBenDian || []).filter((s) => s.degraded);
+  if (jiangZhiYangBen.length) {
+    warnings.push(`${jiangZhiYangBen.length} 个采样点因算路失败降级为直线估算`);
+  }
 
   // 3. 盲区
   const mangquList = await shiBieMangQu(provider, canShu, poiSet, {
@@ -68,7 +78,7 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     jianYi,
     warnings,
     xinxi: {
-      qingQiuShu: qingQiuShu0 + (dengShiQuan.yangBenDian?.length || 0),
+      qingQiuShu,
       haoShiMs: Date.now() - t0,
       miDu: dengShiQuan.miDu,
     },

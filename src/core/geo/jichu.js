@@ -125,6 +125,57 @@ function waiBaoJuXing(dianLie) {
   return { minLng, minLat, maxLng, maxLat };
 }
 
+// 平面化距离（米）近似，比 Haversine 快约 3~5 倍，仅用于栅格/邻域粗筛
+function pingMianJuLi(a, b, latCanKao) {
+  const k = 111320 * Math.cos(zhuanHuDu(latCanKao == null ? (a.lat + b.lat) / 2 : latCanKao));
+  const dx = (a.lng - b.lng) * k;
+  const dy = (a.lat - b.lat) * 110540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// 简单均匀栅格索引：将点集按 cell 大小切分，支持半径邻域查询
+// 返回 { zaiBanJingNei(p, r): Point[] }
+function chuangJianWangGe(dianLie, cellSizeM = 100) {
+  if (!dianLie || dianLie.length === 0) return { zaiBanJingNei: () => [] };
+  const box = waiBaoJuXing(dianLie);
+  const latMid = (box.minLat + box.maxLat) / 2;
+  const mx = 111320 * Math.cos(zhuanHuDu(latMid));
+  const my = 110540;
+  const minX = box.minLng * mx;
+  const minY = box.minLat * my;
+  const cell = Math.max(1, cellSizeM);
+  const cells = new Map();
+  const key = (cx, cy) => `${cx},${cy}`;
+  for (let i = 0; i < dianLie.length; i++) {
+    const p = dianLie[i];
+    const cx = Math.floor((p.lng * mx - minX) / cell);
+    const cy = Math.floor((p.lat * my - minY) / cell);
+    const k = key(cx, cy);
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push({ p, i });
+  }
+  return {
+    zaiBanJingNei(p, r) {
+      const px = p.lng * mx - minX;
+      const py = p.lat * my - minY;
+      const cx = Math.floor(px / cell);
+      const cy = Math.floor(py / cell);
+      const dCell = Math.ceil(r / cell);
+      const out = [];
+      for (let dx = -dCell; dx <= dCell; dx++) {
+        for (let dy = -dCell; dy <= dCell; dy++) {
+          const list = cells.get(key(cx + dx, cy + dy));
+          if (!list) continue;
+          for (const item of list) {
+            if (pingMianJuLi(p, item.p, latMid) <= r) out.push(item);
+          }
+        }
+      }
+      return out;
+    },
+  };
+}
+
 export {
   R_DIQIU,
   zhuanHuDu,
@@ -137,4 +188,6 @@ export {
   mianJi,
   zaiDuoBianXingNei,
   waiBaoJuXing,
+  pingMianJuLi,
+  chuangJianWangGe,
 };

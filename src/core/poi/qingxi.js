@@ -1,7 +1,7 @@
 // 版权声明：肖沐樑  QQ：3387432690
 // 完成时间：2026，09，18
 // 多源 POI 检索编排 + 清洗（归一/去重/过滤/可信度/分维归档）
-import { liangDianJuLi } from '../geo/jichu.js';
+import { liangDianJuLi, chuangJianWangGe } from '../geo/jichu.js';
 import { FENLEI_GUANJIANCI, BIAOZHUN } from '../types.js';
 
 const HEIMINGDAN = ['公司', '仓库', '批发', '养殖', '工地', '废弃', '工厂', '物流园'];
@@ -48,16 +48,23 @@ export function qingXi(rawList, zhongXin) {
   const list = rawList
     .filter((p) => p && p.lng && p.lat && p.lng !== 0 && p.lat !== 0)
     .map((p) => ({ ...p, _clng: zhongXin.lng, _clat: zhongXin.lat }));
-  const out = [];
+  // 第一遍：过滤 + 分类 + 可信度
+  const guoLv = [];
   for (const p of list) {
-    // 噪声过滤
     if (HEIMINGDAN.some((w) => (p.name || '').includes(w))) continue;
     const fenlei = piPeiFenlei(p.name || '');
     if (!fenlei) continue;
-    // 去重：与已保留项比较
+    guoLv.push({ ...p, fenlei, zixin: keXinDu(p) });
+  }
+  // 第二遍：基于栅格索引去重，避免 O(n²)
+  const out = [];
+  const wangGe = chuangJianWangGe([], 200);
+  const suoYouDian = [];
+  for (const p of guoLv) {
+    const houXuan = wangGe.zaiBanJingNei(p, 200).map((it) => suoYouDian[it.i]);
     let dup = false;
-    for (const q of out) {
-      if (q.fenlei !== fenlei) continue;
+    for (const q of houXuan) {
+      if (q.fenlei !== p.fenlei) continue;
       const d = liangDianJuLi(p, q);
       if (q.uid && p.uid && q.uid === p.uid) {
         dup = true;
@@ -73,8 +80,10 @@ export function qingXi(rawList, zhongXin) {
       }
     }
     if (dup) continue;
-    const zixin = keXinDu(p);
-    out.push({ ...p, fenlei, zixin });
+    out.push(p);
+    suoYouDian.push(p);
+    // 索引随数据增长重建，POI 数量通常 <500，重建成本可忽略
+    Object.assign(wangGe, chuangJianWangGe(suoYouDian, 200));
   }
   // 分维归档
   const fenleiSet = {};

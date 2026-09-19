@@ -12,16 +12,29 @@ const WA_YUAN = [
   (z, x, y) => `https://a.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png`,
 ];
 
+// 与 App.jsx 的 COLOR 保持一致（图层开关色 = 地图散点色）
 const COLOR = {
   yiliao: '#ff6b6b',
-  jiaoyu: '#f4b400',
-  gouwu: '#22a06b',
-  yanglao: '#8b5cf6',
+  jiaoyu: '#ffd166',
+  gouwu: '#3ddc97',
+  yanglao: '#b18cff',
   jiaotong: '#2f9bff',
-  xiuxian: '#0ea5a4',
+  xiuxian: '#e64980',
 };
 const MI_CAISE = { 300: '#22a06b', 600: '#2f9bff', 900: '#ff6b6b' };
 const MI_OPA = { 300: 0.3, 600: 0.2, 900: 0.11 };
+
+// 体检中心定位图钉（模块级预加载，尖端即坐标点）
+const ZHONG_XIN_PIN = (() => {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'>
+  <ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/>
+  <path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#1f6feb' stroke='#ffffff' stroke-width='1.5'/>
+  <circle cx='12' cy='11' r='4.2' fill='#ffffff'/>
+</svg>`;
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return img;
+})();
 
 function lngLatToWorld(lng, lat, z) {
   const scale = TILE * 2 ** z;
@@ -184,18 +197,20 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
       ctx.globalAlpha = 1;
     }
 
-    // ⑤ 体检中心
+    // ⑤ 体检中心（定位图钉，尖端对准坐标）
     const c = toXY(center);
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
-    ctx.fillStyle = '#3ddc97';
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(15,23,42,0.85)';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('体检中心', c.x + 12, c.y - 8);
+    if (ZHONG_XIN_PIN.complete && ZHONG_XIN_PIN.naturalWidth) {
+      ctx.drawImage(ZHONG_XIN_PIN, c.x - 12, c.y - 30, 24, 30);
+    } else {
+      // 图标未就绪时先以圆点兜底
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#1f6feb';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
   }, [report, center, xianshi]);
 
   function jianGeChongHua() {
@@ -228,6 +243,8 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
   useEffect(() => {
     const ro = new ResizeObserver(() => jianGeChongHua());
     if (wrapRef.current) ro.observe(wrapRef.current);
+    // 定位图钉首次异步加载完成后重绘一次，替换兜底圆点
+    if (!ZHONG_XIN_PIN.complete) ZHONG_XIN_PIN.onload = jianGeChongHua;
     return () => ro.disconnect();
   }, []);
 

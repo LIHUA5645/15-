@@ -8,6 +8,8 @@ import {
   pingHuaXian,
   liangDianJuLi,
   waiBaoJuXing,
+  chuangJianWangGe,
+  pingMianJuLi,
 } from '../geo/jichu.js';
 import { ouJiGuJI, tuiBiChongShi } from '../scheduler/xianliu.js';
 
@@ -50,24 +52,28 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
   let lo = 0.25 * r0;
   let hi = 2.2 * r0;
   let rA = lo;
-  let tA = (await ceLiang(provider, zhongXin, tuiSuanDian(zhongXin, fangWei, rA), hc, xl))
-    .durationSec;
+  const pA = tuiSuanDian(zhongXin, fangWei, rA);
+  const rAres = await ceLiang(provider, zhongXin, pA, hc, xl);
+  let tA = rAres.durationSec;
   let rB = hi;
-  let tB = (await ceLiang(provider, zhongXin, tuiSuanDian(zhongXin, fangWei, rB), hc, xl))
-    .durationSec;
+  const pB = tuiSuanDian(zhongXin, fangWei, rB);
+  const rBres = await ceLiang(provider, zhongXin, pB, hc, xl);
+  let tB = rBres.durationSec;
 
-  // 记录采样（零成本复用）
+  // 记录采样（零成本复用），同时保留路线用于路网吸附
   yangBen.push({
-    lng: tuiSuanDian(zhongXin, fangWei, rA).lng,
-    lat: tuiSuanDian(zhongXin, fangWei, rA).lat,
+    lng: pA.lng,
+    lat: pA.lat,
     t: tA,
     fangWei,
+    polyline: rAres.polyline,
   });
   yangBen.push({
-    lng: tuiSuanDian(zhongXin, fangWei, rB).lng,
-    lat: tuiSuanDian(zhongXin, fangWei, rB).lat,
+    lng: pB.lng,
+    lat: pB.lat,
     t: tB,
     fangWei,
+    polyline: rBres.polyline,
   });
 
   // 立即被阻隔
@@ -80,8 +86,10 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
   while (tB < T && guard < 4) {
     hi = hi * 1.5;
     rB = hi;
-    tB = (await ceLiang(provider, zhongXin, tuiSuanDian(zhongXin, fangWei, rB), hc, xl))
-      .durationSec;
+    const pB2 = tuiSuanDian(zhongXin, fangWei, rB);
+    const rBres2 = await ceLiang(provider, zhongXin, pB2, hc, xl);
+    tB = rBres2.durationSec;
+    yangBen.push({ lng: pB2.lng, lat: pB2.lat, t: tB, fangWei, polyline: rBres2.polyline });
     guard++;
   }
 
@@ -90,13 +98,15 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
     // 割线估计
     const rC = rB - (tB - T) * ((rB - rA) / (tB - tA || 1e-6));
     const rClamp = Math.max(rA, Math.min(rB, rC));
-    const tc = (await ceLiang(provider, zhongXin, tuiSuanDian(zhongXin, fangWei, rClamp), hc, xl))
-      .durationSec;
+    const pC = tuiSuanDian(zhongXin, fangWei, rClamp);
+    const rCres = await ceLiang(provider, zhongXin, pC, hc, xl);
+    const tc = rCres.durationSec;
     yangBen.push({
-      lng: tuiSuanDian(zhongXin, fangWei, rClamp).lng,
-      lat: tuiSuanDian(zhongXin, fangWei, rClamp).lat,
+      lng: pC.lng,
+      lat: pC.lat,
       t: tc,
       fangWei,
+      polyline: rCres.polyline,
     });
     if (Math.abs(tc - T) < 45 || Math.abs(rClamp - r) < 40) {
       r = rClamp;
@@ -116,18 +126,29 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
 }
 
 // 各向异性 IDW 插值：在网格点上求耗时场
+// 优化：用栅格索引只取最近 12 个样本，从 O(N) 降到 O(k)，整体从 O(N·G²) 降到 O(G²)
 function gouJianChang(yangBen, zhongXin) {
+  const yangBenDian = yangBen.map((s) => ({ lng: s.lng, lat: s.lat }));
+  const wangGe = chuangJianWangGe(yangBenDian, 150);
   return function (p) {
+    const linJin = wangGe.zaiBanJingNei(p, 1200);
+    // 若附近无样本（理论上不会），回退到全量
+    const yuan = linJin.length ? linJin.map((it) => yangBen[it.i]) : yangBen;
+    const thetaP = fangWeiJiao(zhongXin, p);
     let num = 0;
     let den = 0;
-    const thetaP = fangWeiJiao(zhongXin, p);
-    for (const s of yangBen) {
-      const d = liangDianJuLi({ lng: s.lng, lat: s.lat }, p) + 1e-3;
+    let zuiJin = Infinity;
+    for (const s of yuan) {
+      const d = pingMianJuLi({ lng: s.lng, lat: s.lat }, p, zhongXin.lat) + 1e-3;
+      if (d < zuiJin) zuiJin = d;
       const w = 1 / (d * d * (1 + ALPHA * fangWeiCha(s.fangWei, thetaP)));
       num += w * s.t;
       den += w;
     }
-    return den === 0 ? Infinity : num / den;
+    // 远离所有样本时外推会失真，直接给最大目标时长的 1.2 倍作为“不可达”标记
+    if (!den) return Infinity;
+    if (zuiJin > 800) return Math.max(num / den, 1200);
+    return num / den;
   };
 }
 
@@ -218,8 +239,9 @@ function lianJieXianDuan(segs, G, x0, y0, dx, dy) {
     let guard = 0;
     while (cur && !used.has(cur) && guard < 100000) {
       used.add(cur);
+      // 键存的是「格坐标×1000」（毫格精度哈希），还原时必须除回 1000，否则顶点经纬度被放大千倍
       const [ix, iy] = cur.split(',').map(Number);
-      ring.push({ lng: x0 + ix * dx, lat: y0 + iy * dy });
+      ring.push({ lng: x0 + (ix / 1000) * dx, lat: y0 + (iy / 1000) * dy });
       const nxt = map.get(cur).find((e) => key(e) !== cur && !used.has(key(e)));
       cur = nxt ? key(nxt) : null;
       guard++;
@@ -230,19 +252,26 @@ function lianJieXianDuan(segs, G, x0, y0, dx, dy) {
 }
 
 // 路网吸附：等值线顶点 80m 内吸附到采样路网
+// 先用栅格索引把 O(R·L·P) 降到 O(R·k)，k 为 80m 邻域内顶点数
 function luWangXiFu(rings, luXian) {
   if (!luXian.length) return rings;
+  const suoYouDian = [];
+  for (const line of luXian) {
+    for (const q of line) suoYouDian.push(q);
+  }
+  if (!suoYouDian.length) return rings;
+  const wangGe = chuangJianWangGe(suoYouDian, 80);
   return rings.map((ring) =>
     ring.map((p) => {
+      const linJin = wangGe.zaiBanJingNei(p, 80);
+      if (!linJin.length) return p;
       let best = null;
-      let bestD = 80;
-      for (const line of luXian) {
-        for (const q of line) {
-          const d = liangDianJuLi(p, q);
-          if (d < bestD) {
-            bestD = d;
-            best = q;
-          }
+      let bestD = Infinity;
+      for (const it of linJin) {
+        const d = pingMianJuLi(p, it.p, p.lat);
+        if (d < bestD) {
+          bestD = d;
+          best = it.p;
         }
       }
       return best || p;
@@ -286,6 +315,11 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   const dx = (2 * halfLng) / (G - 1);
   const dy = (2 * halfLat) / (G - 1);
 
+  // 收集采样路线（若 provider 返回 polyline 则并入路网），必须在路网吸附前完成
+  for (const s of yangBen) {
+    if (s.polyline) luXian.push(s.polyline);
+  }
+
   const chang = gouJianChang(yangBen, zhongXin);
   const field = new Array(G * G);
   for (let j = 0; j < G; j++) {
@@ -301,11 +335,6 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
     rings = rings.map((r) => pingHuaXian(r, 2));
     rings = luWangXiFu(rings, luXian);
     if (rings.length) ceng.push({ miao, polygon: rings });
-  }
-
-  // 收集采样路线（若 provider 返回 polyline 则并入路网）
-  for (const s of yangBen) {
-    if (s.polyline) luXian.push(s.polyline);
   }
 
   return {

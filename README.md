@@ -28,11 +28,15 @@ src/
     scoring/   评分模型
     scheduler/ 限流/并发/缓存/降级
     pipeline.js 流水线编排
-  adapters/    数据源适配器（bmapWeb / bmapServer / mock）
+  adapters/    数据源适配器（bmapWeb / bmapServer / osm / mock）
   ui/          React 界面 + Canvas 可视化 + ECharts 报告
+public/osm/    样例社区预下载路网（可完全离线复现）
 electron/    桌面端壳（主进程 API 代理 + 磁盘缓存 + 打包）
-docs/         设计实录 / 测试报告
 tests/        vitest 单元测试
+
+设计实录.md              技术设计文档（架构 / 算法 / 数据清洗 / 盲区识别）
+真实对比测试报告.md      长沙·砂子塘社区 画圆法 vs 真实路网实测对比
+修复记录文档.md          开发修复记录
 ```
 
 ## 三、环境配置（AK 脱敏）

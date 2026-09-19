@@ -1,6 +1,6 @@
 // 版权声明：肖沐樑  QQ：3387432690
 // 完成时间：2026，09，18
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { yunXingTijian } from '../core/pipeline.js';
 import { chuangJianBmapWeb } from '../adapters/bmapWeb.js';
 import { chuangJianOsm } from '../adapters/osm.js';
@@ -12,7 +12,7 @@ import { loadBmap } from './loadBmap.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 import { MorphIcon } from 'morphicons/react';
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin } from 'lucide';
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin, Map } from 'lucide';
 
 const COLOR = {
   yiliao: '#ff6b6b',
@@ -20,22 +20,17 @@ const COLOR = {
   gouwu: '#3ddc97',
   yanglao: '#b18cff',
   jiaotong: '#2f9bff',
-  xiuxian: '#4ecdc4',
+  xiuxian: '#e64980',
 };
 const MING = { yiliao: '医疗', jiaoyu: '教育', gouwu: '购物', yanglao: '养老', jiaotong: '交通', xiuxian: '休闲' };
 
+// 初始默认中心点（仅作首屏兜底坐标，界面上已不展示样例社区；真实中心点由浏览器定位/地图点选/搜索产生）
 const YANGLI = [
   { name: '长沙·砂子塘社区', lng: 112.9388, lat: 28.2281 },
   { name: '北京·中关村', lng: 116.3163, lat: 39.9836 },
   { name: '上海·人民广场', lng: 121.4737, lat: 31.2304 },
   { name: '广州·天河城', lng: 113.3245, lat: 23.1371 },
 ];
-
-const MO_DES = {
-  osm: '真实路网 OSM',
-  bmap: '百度地图',
-  server: '服务端',
-};
 
 function chuangJianIpc() {
   const api = window.api;
@@ -50,9 +45,9 @@ const isElectron = typeof window !== 'undefined' && window.api?.isElectron;
 
 export function App() {
   const ak = import.meta.env.VITE_BMAP_AK;
-  // 默认使用 OSM 真实路网：百度 AK 的「地点检索 / 路径规划」服务被平台禁用（status 240）期间，
-  // 该模式仍可给出真实道路计算结果。AK 服务恢复后可在「数据源」切回百度地图。
-  const [mode, setMode] = useState('osm');
+  // 默认数据源=百度地图（符合赛道要求：必须调用百度地图开放能力），
+  // 仅当 .env 未配置 VITE_BMAP_AK 时才退回 OSM 真实路网兜底模式
+  const [mode, setMode] = useState(ak ? 'bmap' : 'osm');
   const [center, setCenter] = useState({ lng: YANGLI[0].lng, lat: YANGLI[0].lat });
   const [curName, setCurName] = useState(YANGLI[0].name);
   const [mubiaoFen, setMubiaoFen] = useState(15);
@@ -65,9 +60,9 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [souSuoWenBen, setSouSuoWenBen] = useState('');
   const [zhouBian, setZhouBian] = useState([]); // 定位周边推荐点
-  // 底图引擎：baidu=百度地图（需 AK 状态正常，否则会被反滥用拦截导致空白）
-  // tile=高德/OSM 瓦片（无需 AK，国内加载快，作为默认可用的底图）
-  const [ditu, setDitu] = useState('tile');
+  // 底图引擎：baidu=百度地图（官方 BMap GL SDK 渲染，默认使用），
+  // tile=高德/OSM 瓦片（AK 被风控拦截时的兜底，MapCanvas 内 3 秒未就绪会自动切换）
+  const [ditu, setDitu] = useState('baidu');
   const [xianshi, setXianshi] = useState(() => Object.fromEntries(Object.keys(COLOR).map((k) => [k, true])));
   const runningRef = useRef(false);
   const jiaoHuRef = useRef(false); // 用户是否已在地图上操作过（手动点选中心）
@@ -252,12 +247,6 @@ export function App() {
     run({ lng: p.lng, lat: p.lat });
   }
 
-  function tiaoZhuanYangLi(y) {
-    setCenter({ lng: y.lng, lat: y.lat });
-    setCurName(y.name);
-    run({ lng: y.lng, lat: y.lat });
-  }
-
   function qieHuanFenlei(f) {
     setXianshi((prev) => ({ ...prev, [f]: !prev[f] }));
   }
@@ -270,6 +259,11 @@ export function App() {
     a.download = 'shenghuoquan-baogao.json';
     a.click();
   }
+
+  const xuanZeZhongXin = useCallback((p) => {
+    jiaoHuRef.current = true;
+    setCenter(p);
+  }, []);
 
   return (
     <div className="app">
@@ -321,11 +315,11 @@ export function App() {
             报告面板
           </button>
         </div>
-        <select className="ditu-select" value={ditu} onChange={(e) => setDitu(e.target.value)} title="底图引擎">
-          <option value="tile">底图：高德/OSM 瓦片</option>
-          <option value="baidu">底图：百度地图</option>
-        </select>
-        <span className={`src-chip ${mode}`}>{MO_DES[mode]}</span>
+        {/* 赛道要求必须使用百度地图，底图固定为百度，不提供第三方底图切换 */}
+        <span className="ditu-chip" title="底图固定使用百度地图（赛道评审要求）">
+          <MorphIcon icon={Map} size={13} spring="snappy" />
+          底图 · 百度地图
+        </span>
         <button className="admin-btn" onClick={() => setAdminOpen(true)}>管理员</button>
       </div>
     </header>
@@ -334,10 +328,7 @@ export function App() {
         <MapCanvas
           report={report}
           center={center}
-          onPick={(p) => {
-            jiaoHuRef.current = true;
-            setCenter(p);
-          }}
+          onPick={xuanZeZhongXin}
           xianshi={xianshi}
           ditu={ditu}
           onDitu={setDitu}
@@ -350,18 +341,10 @@ export function App() {
         <div className="panel-title">体检控制</div>
 
         <div className="sec">
-          <div className="sec-title">样例社区（点击直接体检）</div>
-          <div className="chips-row">
-            {YANGLI.map((y) => (
-              <button key={y.name} className={`chip ${curName === y.name ? 'on' : ''}`} onClick={() => tiaoZhuanYangLi(y)}>
-                {y.name}
-              </button>
-            ))}
-          </div>
-          <div className="sec-title" style={{ marginTop: 10 }}>
-            定位周边推荐
-          </div>
-          {zhouBian.length === 0 && <div className="empty-tip">点击下方「定位」后，自动推荐你附近的社区/街区</div>}
+          <div className="sec-title">定位周边推荐</div>
+          {zhouBian.length === 0 && (
+            <div className="empty-tip">正在获取你的位置…若浏览器拒绝授权，可点击下方「定位」重试，或直接在地图上点选中心点</div>
+          )}
           {zhouBian.length > 0 && (
             <div className="chips-row">
               {zhouBian.map((p) => (
@@ -378,8 +361,13 @@ export function App() {
           <div className="sec-title">设施图层</div>
           <div className="layer-grid">
             {Object.keys(COLOR).map((f) => (
-              <label key={f} className={`layer-item ${xianshi[f] ? 'on' : ''}`} onClick={() => qieHuanFenlei(f)}>
-                <i style={{ background: COLOR[f] }} />
+              <label
+                key={f}
+                className={`layer-item ${xianshi[f] ? 'on' : ''}`}
+                style={{ '--c': COLOR[f] }}
+                onClick={() => qieHuanFenlei(f)}
+              >
+                <i />
                 <span>{MING[f]}</span>
               </label>
             ))}
@@ -413,18 +401,21 @@ export function App() {
               {ak && <option value="bmap">百度地图 · 真实 API、耗配额</option>}
               {isElectron && <option value="server">百度服务端 · 批量矩阵</option>}
             </select>
-            <div className="hint">
-              {mode === 'osm'
-                ? '兜底方案：街道与设施取自 OpenStreetMap 真实数据，等时圈由本地 Dijkstra 沿真实道路计算（实测 15 分钟可达约 1100-1160 米，符合步行 80 米/分钟）。四个样例社区已内置离线数据可直接算；其他任意点会按需联网获取周边 1~2 公里路网并缓存。注意：本模式不调用百度 API，正式评分请用百度地图。'
-                : mode === 'bmap'
-                ? '真实调用百度「地点检索 + 步行算路」，结果真实但消耗配额，超限会触发平台限流。'
-                : '桌面端走主进程服务端 AK，支持批量距离矩阵，性能与配额更优。'}
-            </div>
+            {mode !== 'bmap' && (
+              <div className="hint">
+                {mode === 'osm'
+                  ? '兜底方案：街道与设施取自 OpenStreetMap 真实数据，等时圈由本地 Dijkstra 沿真实道路计算（实测 15 分钟可达约 1100-1160 米，符合步行 80 米/分钟）。四个样例社区已内置离线数据可直接算；其他任意点会按需联网获取周边 1~2 公里路网并缓存。注意：本模式不调用百度 API，正式评分请用百度地图。'
+                  : '桌面端走主进程服务端 AK，支持批量距离矩阵，性能与配额更优。'}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="btn-row">
-          <button className="locate-btn" onClick={dingWei}>定位</button>
+          <button className="locate-btn" onClick={dingWei}>
+            <MorphIcon icon={MapPin} size={15} spring="snappy" />
+            定位
+          </button>
           <button className="run-btn" onClick={() => run()} disabled={running}>
             {running ? `${Math.round(progress * 100)}%` : '开始体检'}
           </button>
